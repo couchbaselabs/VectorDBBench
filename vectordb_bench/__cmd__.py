@@ -18,6 +18,7 @@ class CMDRun:
         self.db: DB = DB[args.database]
         self.db_config: DBConfig = self.db.config_cls(**json.loads(args.db_config))
         self.cases: CaseType = [CaseType[case] for case in args.cases.split(",")]
+        self.label = args.label
 
     def run_from_cmd(self):
         try:
@@ -32,10 +33,7 @@ class CMDRun:
                 task_configs.append(task_config)
 
             runner = BenchMarkRunner()
-            runner.run(task_configs)
-            runner._sync_running_task()
-            result = runner.get_results()
-            log.info(f"results: {result[0]}")
+            runner.run(task_configs, task_label=self.label)
         except KeyboardInterrupt:
             pass
         except Exception as e:
