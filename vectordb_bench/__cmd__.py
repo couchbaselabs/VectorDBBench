@@ -46,12 +46,12 @@ def get_args():
     parser = ArgumentParser()
 
     parser.add_argument(
-        "-c", "--db-config", dest="db_config", default=None, help="Db config"
+        "-c", "--db-config", dest="db_config", default="{}", help="Db config"
     )
     parser.add_argument(
-        "-d", "--database", default=None, help="Database name as listed in DB enum"
+        "-d", "--database", required=True, help="Database name as listed in DB enum"
     )
-    parser.add_argument("-t", "--cases", default="", help="Cases separated by comma")
+    parser.add_argument("-t", "--cases", required=True, help="Cases separated by comma")
     parser.add_argument("-l", "--label", default="", help="label")
 
     return parser.parse_args()
