@@ -1,10 +1,12 @@
 ENV := env
+PY_VERSION := 3.11.8
 
 all:
 	export PYENV_ROOT="$$HOME/.pyenv" && \
 	export PATH="$$PYENV_ROOT/bin:$$PATH" && \
 	eval "$$(pyenv init --path)" && \
-	pyenv local 3.11.8 && \
+	pyenv install ${PY_VERSION} -s && \
+	pyenv local ${PY_VERSION} && \
 	virtualenv --quiet --python python3.11 ${ENV}
 	# ${ENV}/bin/pip install ./vectordb-bench[couchbase]
 	${ENV}/bin/pip install -e ".[couchbase]"
