@@ -1,13 +1,8 @@
 from enum import Enum
 from typing import Type
-from .api import (
-    VectorDB,
-    DBConfig,
-    DBCaseConfig,
-    EmptyDBCaseConfig,
-    IndexType,
-    MetricType,
-)
+
+from .api import (DBCaseConfig, DBConfig, EmptyDBCaseConfig, IndexType,
+                  MetricType, VectorDB)
 
 
 class DB(Enum):
@@ -34,6 +29,7 @@ class DB(Enum):
     Redis = "Redis"
     MemoryDB = "MemoryDB"
     Chroma = "Chroma"
+    Couchbase = "Couchbase"
     AWSOpenSearch = "OpenSearch"
     Test = "test"
 
@@ -89,6 +85,10 @@ class DB(Enum):
             from .chroma.chroma import ChromaClient
             return ChromaClient
 
+        if self == DB.Couchbase:
+            from .couchbase.couchbase import Couchbase
+            return Couchbase
+
         if self == DB.AWSOpenSearch:
             from .aws_opensearch.aws_opensearch import AWSOpenSearch
             return AWSOpenSearch
@@ -143,6 +143,10 @@ class DB(Enum):
         if self == DB.Chroma:
             from .chroma.config import ChromaConfig
             return ChromaConfig
+
+        if self == DB.Couchbase:
+            from .couchbase.config import CouchbaseConfig
+            return CouchbaseConfig
 
         if self == DB.AWSOpenSearch:
             from .aws_opensearch.config import AWSOpenSearchConfig

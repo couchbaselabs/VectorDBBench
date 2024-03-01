@@ -61,6 +61,7 @@ all = [
     "redis",
     "chromadb",
     "psycopg",
+    "couchbase",
     "psycopg-binary",
     "opensearch-dsl==2.1.0",
     "opensearch-py==2.6.0",
@@ -76,6 +77,7 @@ pgvecto_rs = [ "pgvecto_rs[psycopg3]>=0.2.1" ]
 redis = [ "redis" ]
 memorydb = [ "memorydb" ]
 chromadb = [ "chromadb" ]
+couchbase = [ "couchbase" ]
 awsopensearch = [ "awsopensearch" ]
 zilliz_cloud = []
 
@@ -84,6 +86,7 @@ zilliz_cloud = []
 
 [project.scripts]
 init_bench = "vectordb_bench.__main__:main"
+cmd_run = "vectordb_bench.__cmd__:main"
 vectordbbench = "vectordb_bench.cli.vectordbbench:cli"
 
 [tool.setuptools_scm]
