@@ -42,7 +42,7 @@ class Couchbase(VectorDB):
 
         self.connection_string = "{}{}".format(cb_proto, host)
         self.bucket = db_config.get("bucket")
-        self.batch_size = 200  # TODO
+        self.batch_size = 100  # TODO
         self.docs_count = 0
 
         self.index_name = f"{self.bucket}_vector_index"
@@ -151,6 +151,7 @@ class Couchbase(VectorDB):
             source_name=self.bucket,
             params=self._get_search_index_params(),
             plan_params=self._get_search_index_plan_params(),
+            source_params={},
         )
 
         index_manager = self._get_cluster().search_indexes()
@@ -169,15 +170,12 @@ class Couchbase(VectorDB):
     def _get_search_index_params(self):
         return {
             "doc_config": {
-                "docid_prefix_delim": "",
-                "docid_regexp": "",
                 "mode": "type_field",
                 "type_field": "type",
             },
             "store": {
                 "indexType": "scorch",
                 "segmentVersion": 16,
-                "spatialPlugin": "s2",
             },
             "mapping": {
                 "default_type": "_default",
@@ -187,22 +185,24 @@ class Couchbase(VectorDB):
                 "store_dynamic": False,
                 "index_dynamic": True,
                 "type_field": "_type",
-                "default_mapping": {"dynamic": True, "enabled": True},
-                "types": {
-                    "emb": {
-                        "dynamic": False,
-                        "enabled": True,
-                        "fields": [
-                            {
-                                "dims": self.dim,
-                                "index": True,
-                                "name": "emb",
-                                "similarity": "l2_norm",
-                                "store": True,
-                                "type": "vector",
-                            }
-                        ],
-                    }
+                "default_mapping": {
+                    "dynamic": False,
+                    "enabled": True,
+                    "properties": {
+                        "emb": {
+                            "dynamic": False,
+                            "enabled": True,
+                            "fields": [
+                                {
+                                    "dims": self.dim,
+                                    "index": True,
+                                    "name": "emb",
+                                    "similarity": "l2_norm",
+                                    "type": "vector",
+                                }
+                            ],
+                        }
+                    },
                 },
             },
         }
