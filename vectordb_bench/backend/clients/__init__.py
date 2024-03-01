@@ -1,13 +1,8 @@
 from enum import Enum
 from typing import Type
-from .api import (
-    VectorDB,
-    DBConfig,
-    DBCaseConfig,
-    EmptyDBCaseConfig,
-    IndexType,
-    MetricType,
-)
+
+from .api import (DBCaseConfig, DBConfig, EmptyDBCaseConfig, IndexType,
+                  MetricType, VectorDB)
 
 
 class DB(Enum):
@@ -32,6 +27,7 @@ class DB(Enum):
     PgVectoRS = "PgVectoRS"
     Redis = "Redis"
     Chroma = "Chroma"
+    Couchbase = "Couchbase"
 
 
     @property
@@ -77,6 +73,10 @@ class DB(Enum):
             from .chroma.chroma import ChromaClient
             return ChromaClient
 
+        if self == DB.Couchbase:
+            from .couchbase.couchbase import Couchbase
+            return Couchbase
+
     @property
     def config_cls(self) -> Type[DBConfig]:
         """Import while in use"""
@@ -119,6 +119,10 @@ class DB(Enum):
         if self == DB.Chroma:
             from .chroma.config import ChromaConfig
             return ChromaConfig
+
+        if self == DB.Couchbase:
+            from .couchbase.config import CouchbaseConfig
+            return CouchbaseConfig
 
     def case_config_cls(self, index_type: IndexType | None = None) -> Type[DBCaseConfig]:
         if self == DB.Milvus:

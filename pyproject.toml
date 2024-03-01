@@ -60,6 +60,7 @@ all = [
     "chromadb",
     "psycopg2",
     "psycopg",
+    "couchbase",
 ]
 
 qdrant = [ "qdrant-client" ]
@@ -70,11 +71,13 @@ pgvector = [ "pgvector", "psycopg" ]
 pgvecto_rs = [ "psycopg2" ]
 redis = [ "redis" ]
 chromadb = [ "chromadb" ]
+couchbase = [ "couchbase" ]
 
 [project.urls]
 "repository" = "https://github.com/zilliztech/VectorDBBench"
 
 [project.scripts]
 init_bench = "vectordb_bench.__main__:main"
+cmd_run = "vectordb_bench.__cmd__:main"
 
 [tool.setuptools_scm]

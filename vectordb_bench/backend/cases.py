@@ -1,12 +1,11 @@
-import typing
 import logging
+import typing
 from enum import Enum, auto
 
 from vectordb_bench import config
 from vectordb_bench.base import BaseModel
 
 from .dataset import Dataset, DatasetManager
-
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +42,8 @@ class CaseType(Enum):
     Performance1536D5M99P = 15
 
     Custom = 100
+
+    Performance1536D50K = 200
 
     @property
     def case_cls(self, custom_configs: dict | None = None) -> Case:
@@ -268,6 +269,16 @@ Results will show index building time, recall, and maximum QPS."""
     load_timeout: float | int = config.LOAD_TIMEOUT_1536D_5M
     optimize_timeout: float | int | None = config.OPTIMIZE_TIMEOUT_1536D_5M
 
+class Performance1536D50K(PerformanceCase):
+    case_id: CaseType = CaseType.Performance1536D50K
+    filter_rate: float | int | None = None
+    dataset: DatasetManager = Dataset.OPENAI.manager(50_000)
+    name: str = "Search Performance Test (50K Dataset, 1536 Dim)"
+    description: str = """This case tests the search performance of a vector database with a small 50K dataset (<b>OpenAI 50K vectors</b>, 1536 dimensions), at varying parallel levels.
+Results will show index building time, recall, and maximum QPS."""
+    load_timeout: float | int = config.LOAD_TIMEOUT_1536D_5M
+    optimize_timeout: float | int | None = config.OPTIMIZE_TIMEOUT_1536D_5M
+
 
 type2case = {
     CaseType.CapacityDim960: CapacityDim960,
@@ -290,5 +301,7 @@ type2case = {
 
     CaseType.Performance1536D500K99P: Performance1536D500K99P,
     CaseType.Performance1536D5M99P: Performance1536D5M99P,
+
+    CaseType.Performance1536D50K: Performance1536D50K,
 
 }
