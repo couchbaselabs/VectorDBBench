@@ -9,7 +9,7 @@ from couchbase.cluster import Cluster
 from couchbase.exceptions import SearchIndexNotFoundException
 from couchbase.management.buckets import BucketManager
 from couchbase.management.search import SearchIndex
-from couchbase.options import ClusterOptions, UpsertMultiOptions
+from couchbase.options import ClusterOptions, SearchOptions, UpsertMultiOptions
 from couchbase.search import MatchAllQuery, SearchRequest
 from couchbase.vector_search import VectorQuery, VectorSearch
 
@@ -18,6 +18,14 @@ from vectordb_bench.backend.clients.api import DBCaseConfig
 from ..api import VectorDB
 
 log = logging.getLogger(__name__)
+
+@cache
+def get_cluster(conn_string, username, password):
+    auth = PasswordAuthenticator(username, password)
+    cluster_options = ClusterOptions(auth)
+    cluster = Cluster(conn_string, cluster_options)
+    cluster.wait_until_ready(timedelta(seconds=10))
+    return cluster
 
 
 class Couchbase(VectorDB):
@@ -48,34 +56,7 @@ class Couchbase(VectorDB):
         self.index_name = f"{self.bucket}_vector_index"
 
         if drop_old:
-            cluster = self._get_cluster()
-            log.debug("Couchbase: Droping bucket and recreating it")
-            bucket_settings = None
-            try:
-                # Drop index if already exists
-                index_manager = cluster.search_indexes()
-                try:
-                    index_manager.drop_index(self.index_name)
-                except SearchIndexNotFoundException:
-                    pass
-
-                manager = BucketManager(cluster.connection)
-                # Flush or recreate the bucket
-                bucket_settings = manager.get_bucket(self.bucket)
-                if bucket_settings.flush_enabled:
-                    manager.flush_bucket(self.bucket)
-                else:
-                    # Create bucket with the same settings if already exists
-                    log.debug(f"Bucket settings: {bucket_settings}")
-                    manager.drop_bucket(self.bucket)
-                    sleep(10)
-                    manager.create_bucket(bucket_settings)
-
-                sleep(15)
-                self._create_search_index()
-            except Exception as e:
-                log.warn(f"Couchbase: {e}")
-                raise Exception(e)
+            self._drop_or_flush_old()
 
     @contextmanager
     def init(self):
@@ -120,7 +101,9 @@ class Couchbase(VectorDB):
                     VectorQuery("emb", query, num_candidates=k)
                 )
             )
-            search_iter = self._get_cluster().search(self.index_name, search_req)
+            search_iter = self._get_cluster().search(
+                self.index_name, search_req, SearchOptions(limit=k)
+            )
             rows = [int(row.id) for row in search_iter.rows()]
         except Exception as e:
             log.debug(f"Couchbase: {e}")
@@ -136,7 +119,7 @@ class Couchbase(VectorDB):
 
     # --------Couchbase helpers------
 
-    @cache
+    @cache  # noqa
     def _get_cluster(self):
         """Helper for creating a cluster connection."""
         auth = PasswordAuthenticator(self.username, self.password)
@@ -166,6 +149,36 @@ class Couchbase(VectorDB):
             if indexed_docs >= self.docs_count:
                 return
             sleep(30)
+
+    def _drop_or_flush_old(self):
+        log.debug("Couchbase: Droping bucket and recreating it")
+        cluster = self._get_cluster()
+        bucket_settings = None
+        try:
+            # Drop index if already exists
+            index_manager = cluster.search_indexes()
+            try:
+                index_manager.drop_index(self.index_name)
+            except SearchIndexNotFoundException:
+                pass
+
+            manager = BucketManager(cluster.connection)
+            # Flush or recreate the bucket
+            bucket_settings = manager.get_bucket(self.bucket)
+            if bucket_settings.flush_enabled:
+                manager.flush_bucket(self.bucket)
+            else:
+                # Create bucket with the same settings if already exists
+                log.debug(f"Bucket settings: {bucket_settings}")
+                manager.drop_bucket(self.bucket)
+                sleep(10)
+                manager.create_bucket(bucket_settings)
+
+            sleep(15)
+            self._create_search_index()
+        except Exception as e:
+            log.warn(f"Couchbase: {e}")
+            raise Exception(e) from None
 
     def _get_search_index_params(self):
         return {
