@@ -10,7 +10,7 @@ from couchbase.exceptions import SearchIndexNotFoundException
 from couchbase.management.buckets import BucketManager
 from couchbase.management.search import SearchIndex
 from couchbase.options import ClusterOptions, SearchOptions, UpsertMultiOptions
-from couchbase.search import MatchAllQuery, SearchRequest
+from couchbase.search import MatchNoneQuery, SearchRequest
 from couchbase.vector_search import VectorQuery, VectorSearch
 
 from vectordb_bench.backend.clients.api import DBCaseConfig
@@ -18,15 +18,6 @@ from vectordb_bench.backend.clients.api import DBCaseConfig
 from ..api import VectorDB
 
 log = logging.getLogger(__name__)
-
-@cache
-def get_cluster(conn_string, username, password):
-    auth = PasswordAuthenticator(username, password)
-    cluster_options = ClusterOptions(auth)
-    cluster = Cluster(conn_string, cluster_options)
-    cluster.wait_until_ready(timedelta(seconds=10))
-    return cluster
-
 
 class Couchbase(VectorDB):
     def __init__(
@@ -96,7 +87,7 @@ class Couchbase(VectorDB):
     ) -> list[int]:
         rows = [0]
         try:
-            search_req = SearchRequest.create(MatchAllQuery()).with_vector_search(
+            search_req = SearchRequest.create(MatchNoneQuery()).with_vector_search(
                 VectorSearch.from_vector_query(
                     VectorQuery("emb", query, num_candidates=k)
                 )
@@ -107,7 +98,6 @@ class Couchbase(VectorDB):
             rows = [int(row.id) for row in search_iter.rows()]
         except Exception as e:
             log.debug(f"Couchbase: {e}")
-
         return rows
 
     def optimize(self):
