@@ -34,9 +34,13 @@ class Couchbase(VectorDB):
         host = db_config.get("host")
         self.username = db_config.get("username")
         self.password = db_config.get("password")
+        ssl_mode = db_config.get("ssl_mode")
+        self.is_capella = ssl_mode == "capella"
 
         cb_proto = ""
-        if "://" not in host:
+        if ssl_mode in ("tls", "capella") and "://" not in host:
+            cb_proto = "couchbases://"
+        elif "://" not in host:
             cb_proto = "couchbase://"
 
         self.connection_string = "{}{}".format(cb_proto, host)
@@ -114,6 +118,8 @@ class Couchbase(VectorDB):
         """Helper for creating a cluster connection."""
         auth = PasswordAuthenticator(self.username, self.password)
         cluster_options = ClusterOptions(auth)
+        if self.is_capella:
+            cluster_options.apply_profile("wan_development")
         cluster = Cluster(self.connection_string, cluster_options)
         cluster.wait_until_ready(timedelta(seconds=10))
         return cluster
