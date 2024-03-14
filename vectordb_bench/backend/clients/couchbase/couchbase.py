@@ -9,9 +9,10 @@ from couchbase.cluster import Cluster
 from couchbase.exceptions import SearchIndexNotFoundException
 from couchbase.management.buckets import BucketManager
 from couchbase.management.search import SearchIndex
-from couchbase.options import ClusterOptions, SearchOptions, UpsertMultiOptions
+from couchbase.options import ClusterOptions, SearchOptions, UpsertMultiOptions, WaitUntilReadyOptions
 from couchbase.search import MatchNoneQuery, SearchRequest
 from couchbase.vector_search import VectorQuery, VectorSearch
+from couchbase.diagnostics import ServiceType
 
 from vectordb_bench.backend.clients.api import DBCaseConfig
 
@@ -121,7 +122,8 @@ class Couchbase(VectorDB):
         if self.is_capella:
             cluster_options.apply_profile("wan_development")
         cluster = Cluster(self.connection_string, cluster_options)
-        cluster.wait_until_ready(timedelta(seconds=10))
+        services = [ServiceType.KeyValue, ServiceType.Search]
+        cluster.wait_until_ready(timedelta(seconds=10), WaitUntilReadyOptions(service_types=services))
         return cluster
 
     def _create_search_index(self):
