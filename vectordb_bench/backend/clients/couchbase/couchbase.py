@@ -39,12 +39,16 @@ class Couchbase(VectorDB):
         self.is_capella = ssl_mode == "capella"
 
         cb_proto = ""
-        if ssl_mode in ("tls", "capella") and "://" not in host:
+        if ssl_mode in ("tls", "capella", "n2n") and "://" not in host:
             cb_proto = "couchbases://"
         elif "://" not in host:
             cb_proto = "couchbase://"
 
-        self.connection_string = "{}{}".format(cb_proto, host)
+        params = ""
+        if cb_proto.startswith("couchbases:") or host.startswith("couchbases:"):
+            params = "?ssl=no_verify"
+
+        self.connection_string = f"{cb_proto}{host}{params}"
         self.bucket = db_config.get("bucket")
         self.batch_size = 100  # TODO
         self.docs_count = 0
@@ -68,7 +72,7 @@ class Couchbase(VectorDB):
         insert_count = 0
         try:
             upsert_options = UpsertMultiOptions(
-                return_exceptions=False, timeout=timedelta(seconds=5)
+                return_exceptions=False, timeout=timedelta(seconds=10)
             )
             coll = self._get_cluster().bucket(self.bucket).default_collection()
             for start_offset in range(0, len(embeddings), self.batch_size):
@@ -121,6 +125,7 @@ class Couchbase(VectorDB):
         cluster_options = ClusterOptions(auth)
         if self.is_capella:
             cluster_options.apply_profile("wan_development")
+
         cluster = Cluster(self.connection_string, cluster_options)
         services = [ServiceType.KeyValue, ServiceType.Search]
         cluster.wait_until_ready(timedelta(seconds=10), WaitUntilReadyOptions(service_types=services))
@@ -149,30 +154,35 @@ class Couchbase(VectorDB):
             sleep(30)
 
     def _drop_or_flush_old(self):
-        log.debug("Couchbase: Droping bucket and recreating it")
         cluster = self._get_cluster()
         bucket_settings = None
         try:
-            # Drop index if already exists
+            # Drop index if one already exists
+            log.debug("Couchbase: Droping index (if exists)")
             index_manager = cluster.search_indexes()
             try:
                 index_manager.drop_index(self.index_name)
             except SearchIndexNotFoundException:
                 pass
 
-            manager = BucketManager(cluster.connection)
-            # Flush or recreate the bucket
-            bucket_settings = manager.get_bucket(self.bucket)
-            if bucket_settings.flush_enabled:
-                manager.flush_bucket(self.bucket)
-            else:
-                # Create bucket with the same settings if already exists
-                log.debug(f"Bucket settings: {bucket_settings}")
-                manager.drop_bucket(self.bucket)
-                sleep(10)
-                manager.create_bucket(bucket_settings)
+            # Due to permission, we may not be able to perform these operations through SDK
+            if not self.is_capella:
+                log.debug("Couchbase: Droping bucket and recreating it (if exists)")
+                manager = BucketManager(cluster.connection)
+                # Flush or recreate the bucket
+                bucket_settings = manager.get_bucket(self.bucket)
+                if bucket_settings.flush_enabled:
+                    manager.flush_bucket(self.bucket)
+                else:
+                    # Create bucket with the same settings if already exists
+                    log.debug(f"Bucket settings: {bucket_settings}")
+                    manager.drop_bucket(self.bucket)
+                    sleep(10)
+                    manager.create_bucket(bucket_settings)
 
-            sleep(15)
+                sleep(15)
+
+            log.debug("Couchbase: Recteating index")
             self._create_search_index()
         except Exception as e:
             log.warn(f"Couchbase: {e}")
