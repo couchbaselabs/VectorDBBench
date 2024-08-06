@@ -6,32 +6,64 @@ from time import sleep
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import SearchIndexNotFoundException
+from couchbase.diagnostics import ServiceType
+from couchbase.exceptions import (
+    CouchbaseException,
+    QueryErrorContext,
+    QueryIndexNotFoundException,
+    SearchErrorContext,
+    SearchIndexNotFoundException,
+)
 from couchbase.management.buckets import BucketManager
 from couchbase.management.search import SearchIndex
-from couchbase.options import ClusterOptions, SearchOptions, UpsertMultiOptions, WaitUntilReadyOptions
+from couchbase.options import (
+    ClusterOptions,
+    QueryOptions,
+    SearchOptions,
+    UpsertMultiOptions,
+    WaitUntilReadyOptions,
+)
 from couchbase.search import MatchNoneQuery, SearchRequest
 from couchbase.vector_search import VectorQuery, VectorSearch
-from couchbase.diagnostics import ServiceType
-
-from vectordb_bench.backend.clients.api import DBCaseConfig
 
 from ..api import VectorDB
+from .config import (
+    CouchbaseFTSIndexConfig,
+    CouchbaseGSICVIndexConfig,
+    CouchbaseIndexConfig,
+)
 
 log = logging.getLogger(__name__)
 
 class Couchbase(VectorDB):
+    def __new__(
+        cls,
+        dim: int,
+        db_config: dict,
+        db_case_config: CouchbaseIndexConfig | None,
+        drop_old: bool = False,
+        **kwargs,
+    ):
+        if db_case_config.is_gsi_index:
+            return GSICouchbaseClient(
+                dim, db_config, db_case_config, drop_old, **kwargs
+            )
+        return FTSCouchbaseClient(dim, db_config, db_case_config, drop_old, **kwargs)
+
+
+class CouchbaseClient(VectorDB):
     def __init__(
         self,
         dim: int,
         db_config: dict,
-        db_case_config: DBCaseConfig | None,
+        db_case_config: CouchbaseIndexConfig | None,
         drop_old: bool = False,
         **kwargs,
     ) -> None:
         self.db_config = db_config
         self.db_case_config = db_case_config
         self.dim = dim
+        self.index_type = db_config.get("index_type")
         host = db_config.get("host")
         self.username = db_config.get("username")
         self.password = db_config.get("password")
@@ -54,6 +86,8 @@ class Couchbase(VectorDB):
         self.docs_count = 0
 
         self.index_name = f"{self.bucket}_vector_index"
+
+        log.debug(f"{db_case_config=}")
 
         if drop_old:
             self._drop_or_flush_old()
@@ -85,11 +119,90 @@ class Couchbase(VectorDB):
                 }
                 coll.upsert_multi(batch_data, upsert_options)
                 insert_count += self.batch_size
-        except Exception as e:
-            log.debug(f"Couchbase: {e}")
+        except CouchbaseException as e:
+            log.debug(e)
             return insert_count, e
 
         return insert_count, None
+
+    def ready_to_load(self):
+        pass
+
+    def optimize(self):
+        log.info(f"Creating {self.index_type} index")
+        self.create_index()
+        log.info(f"Waiting for index '{self.index_name}' to be ready")
+        self.wait_for_index()
+
+    @cache  # noqa
+    def _get_cluster(self):
+        """Helper for creating a cluster connection."""
+        auth = PasswordAuthenticator(self.username, self.password)
+        cluster_options = ClusterOptions(auth)
+        if self.is_capella:
+            cluster_options.apply_profile("wan_development")
+
+        cluster = Cluster(self.connection_string, cluster_options)
+
+        cluster.wait_until_ready(
+            timedelta(seconds=30), WaitUntilReadyOptions(service_types=self.services)
+        )
+        return cluster
+
+    def _drop_or_flush_old(self):
+        cluster = self._get_cluster()
+        bucket_settings = None
+        try:
+            # Drop index if one already exists
+            log.debug("Droping index (if exists)")
+            self.drop_index(cluster)
+
+            # Due to permission, we may not be able to perform these operations through SDK
+            if not self.is_capella:
+                manager = BucketManager(cluster.connection)
+                # Flush or recreate the bucket
+                bucket_settings = manager.get_bucket(self.bucket)
+                if bucket_settings.flush_enabled:
+                    log.debug("Flushing bucket")
+                    manager.flush_bucket(self.bucket)
+                else:
+                    # Create bucket with the same settings if already exists
+                    log.debug(f"Dropping and recreating bucket with {bucket_settings=}")
+                    manager.drop_bucket(self.bucket)
+                    sleep(10)
+                    manager.create_bucket(bucket_settings)
+
+                sleep(15)
+        except CouchbaseException as e:
+            log.warn(e.message)
+            log.debug(e)
+            raise Exception(e.message) from None
+
+    def drop_index(self, cluster: Cluster):
+        # Drop index depend on the specific index type
+        pass
+
+    def create_index(self):
+        pass
+
+    def wait_for_index(self):
+        pass
+
+
+class FTSCouchbaseClient(CouchbaseClient):
+    def __init__(
+        self,
+        dim: int,
+        db_config: dict,
+        db_case_config: CouchbaseFTSIndexConfig | None,
+        drop_old: bool = False,
+        **kwargs,
+    ) -> None:
+        self.services = [
+            ServiceType.KeyValue,
+            ServiceType.Search,
+        ]
+        super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
@@ -105,131 +218,104 @@ class Couchbase(VectorDB):
                 self.index_name, search_req, SearchOptions(limit=k)
             )
             rows = [int(row.id) for row in search_iter.rows()]
-        except Exception as e:
-            log.debug(f"Couchbase: {e}")
+        except CouchbaseException as e:
+            log.warn(e.message)
+            if isinstance(e.error_context, SearchErrorContext):
+                log.debug(e.error_context.response_body)
+
         return rows
 
-    def optimize(self):
-        log.info("Couchbase: waiting for docs processed by the index")
-        self._wait_for_index_processed_docs()
-
-    def ready_to_load(self):
-        pass
-
-    # --------Couchbase helpers------
-
-    @cache  # noqa
-    def _get_cluster(self):
-        """Helper for creating a cluster connection."""
-        auth = PasswordAuthenticator(self.username, self.password)
-        cluster_options = ClusterOptions(auth)
-        if self.is_capella:
-            cluster_options.apply_profile("wan_development")
-
-        cluster = Cluster(self.connection_string, cluster_options)
-        services = [ServiceType.KeyValue, ServiceType.Search]
-        cluster.wait_until_ready(timedelta(seconds=10), WaitUntilReadyOptions(service_types=services))
-        return cluster
-
-    def _create_search_index(self):
+    def create_index(self):
         index = SearchIndex(
             name=self.index_name,
             source_name=self.bucket,
-            params=self._get_search_index_params(),
-            plan_params=self._get_search_index_plan_params(),
+            params=self.db_case_config.search_index_params(self.dim),
+            plan_params=self.db_case_config.plan_params(),
             source_params={},
         )
+        try:
+            index_manager = self._get_cluster().search_indexes()
+            index_manager.upsert_index(index)
+            log.debug("Index created")
+        except CouchbaseException as e:
+            log.warn(f"{e.message} for {index=}")
 
-        index_manager = self._get_cluster().search_indexes()
-        index_manager.upsert_index(index)
-        log.debug("Couchbase: Index created")
-
-    def _wait_for_index_processed_docs(self):
+    def wait_for_index(self):
         index_manager = self._get_cluster().search_indexes()
         while True:
-            indexed_docs = index_manager.get_indexed_documents_count(self.index_name)
-            log.debug(f"Indexed docs {indexed_docs}")
-            if indexed_docs >= self.docs_count:
-                return
-            sleep(30)
-
-    def _drop_or_flush_old(self):
-        cluster = self._get_cluster()
-        bucket_settings = None
-        try:
-            # Drop index if one already exists
-            log.debug("Couchbase: Droping index (if exists)")
-            index_manager = cluster.search_indexes()
             try:
-                index_manager.drop_index(self.index_name)
-            except SearchIndexNotFoundException:
-                pass
+                indexed_docs = index_manager.get_indexed_documents_count(
+                    self.index_name
+                )
+                log.debug(f"Indexed docs {indexed_docs}")
+                if indexed_docs >= self.docs_count:
+                    break
+            except CouchbaseException as e:
+                log.warn(e.message)
+            sleep(10)
 
-            # Due to permission, we may not be able to perform these operations through SDK
-            if not self.is_capella:
-                log.debug("Couchbase: Droping bucket and recreating it (if exists)")
-                manager = BucketManager(cluster.connection)
-                # Flush or recreate the bucket
-                bucket_settings = manager.get_bucket(self.bucket)
-                if bucket_settings.flush_enabled:
-                    manager.flush_bucket(self.bucket)
-                else:
-                    # Create bucket with the same settings if already exists
-                    log.debug(f"Bucket settings: {bucket_settings}")
-                    manager.drop_bucket(self.bucket)
-                    sleep(10)
-                    manager.create_bucket(bucket_settings)
+    def drop_index(self, cluster: Cluster):
+        try:
+            index_manager = cluster.search_indexes()
+            index_manager.drop_index(self.index_name)
+        except SearchIndexNotFoundException:
+            pass
 
-                sleep(15)
 
-            log.debug("Couchbase: Recteating index")
-            self._create_search_index()
-        except Exception as e:
-            log.warn(f"Couchbase: {e}")
-            raise Exception(e) from None
+class GSICouchbaseClient(CouchbaseClient):
+    def __init__(
+        self,
+        dim: int,
+        db_config: dict,
+        db_case_config: CouchbaseGSICVIndexConfig | None,
+        drop_old: bool = False,
+        **kwargs,
+    ) -> None:
+        self.services = [ServiceType.KeyValue, ServiceType.Query]
+        super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
 
-    def _get_search_index_params(self):
-        return {
-            "doc_config": {
-                "mode": "type_field",
-                "type_field": "type",
-            },
-            "store": {
-                "indexType": "scorch",
-                "segmentVersion": 16,
-            },
-            "mapping": {
-                "default_type": "_default",
-                "default_analyzer": "standard",
-                "default_datetime_parser": "dateTimeOptional",
-                "default_field": "_all",
-                "store_dynamic": False,
-                "index_dynamic": True,
-                "type_field": "_type",
-                "default_mapping": {
-                    "dynamic": False,
-                    "enabled": True,
-                    "properties": {
-                        "emb": {
-                            "dynamic": False,
-                            "enabled": True,
-                            "fields": [
-                                {
-                                    "dims": self.dim,
-                                    "index": True,
-                                    "name": "emb",
-                                    "similarity": "l2_norm",
-                                    "type": "vector",
-                                }
-                            ],
-                        }
-                    },
-                },
-            },
-        }
+    def search_embedding(
+        self, query: list[float], k: int = 100, filters: dict | None = None
+    ) -> list[int]:
+        rows = [0]
+        options = QueryOptions(timeout=timedelta(minutes=5))
+        try:
+            select_query = f"SELECT id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {k}) LIMIT {k};"
+            query_result = self._get_cluster().query(select_query, options).execute()
+            rows = [int(row.get("id")) for row in query_result]
+        except CouchbaseException as e:
+            log.warn(e.message)
+            if isinstance(e.error_context, QueryErrorContext):
+                log.debug(e.error_context.response_body)
 
-    def _get_search_index_plan_params(self):
-        return {
-            "indexPartitions": 20,
-            "maxPartitionsPerPIndex": 52,
-        }
+        return rows
+
+    def wait_for_index(self):
+        index_manager = self._get_cluster().query_indexes()
+        while True:
+            indexes = index_manager.get_all_indexes(self.bucket)
+            if len(indexes):
+                state = indexes[0].state
+                log.debug(f"Index {state=}")
+                if state == "online":
+                    break
+            sleep(10)
+        log.debug("Index created")
+
+    def create_index(self):
+        index_params = self.db_case_config.index_param(self.dim)
+        create_index_query = f"CREATE INDEX `{self.index_name}` ON `{self.bucket}` (emb VECTOR) USING GSI WITH {index_params}"
+        log.debug(f"Creating index: {create_index_query}")
+        cluster = self._get_cluster()
+        try:
+            cluster.query(create_index_query).execute()
+        except CouchbaseException as e:
+            # Possibly a timeout, just continue to waiting for the index to be ready
+            log.debug(e)
+
+    def drop_index(self, cluster: Cluster):
+        try:
+            index_manager = cluster.query_indexes()
+            index_manager.drop_index(self.bucket, self.index_name)
+        except QueryIndexNotFoundException:
+            pass
