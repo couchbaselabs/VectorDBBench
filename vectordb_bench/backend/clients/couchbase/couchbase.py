@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import contextmanager
 from datetime import timedelta
@@ -7,31 +8,20 @@ from time import sleep
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
 from couchbase.diagnostics import ServiceType
-from couchbase.exceptions import (
-    CouchbaseException,
-    QueryErrorContext,
-    QueryIndexNotFoundException,
-    SearchErrorContext,
-    SearchIndexNotFoundException,
-)
+from couchbase.exceptions import (CouchbaseException, QueryErrorContext,
+                                  QueryIndexNotFoundException,
+                                  SearchErrorContext,
+                                  SearchIndexNotFoundException)
 from couchbase.management.buckets import BucketManager
 from couchbase.management.search import SearchIndex
-from couchbase.options import (
-    ClusterOptions,
-    QueryOptions,
-    SearchOptions,
-    UpsertMultiOptions,
-    WaitUntilReadyOptions,
-)
+from couchbase.options import (ClusterOptions, QueryOptions, SearchOptions,
+                               WaitUntilReadyOptions)
 from couchbase.search import MatchNoneQuery, SearchRequest
 from couchbase.vector_search import VectorQuery, VectorSearch
 
 from ..api import VectorDB
-from .config import (
-    CouchbaseFTSIndexConfig,
-    CouchbaseGSICVIndexConfig,
-    CouchbaseIndexConfig,
-)
+from .config import (CouchbaseFTSIndexConfig, CouchbaseGSICVIndexConfig,
+                     CouchbaseIndexConfig)
 
 log = logging.getLogger(__name__)
 
@@ -82,9 +72,6 @@ class CouchbaseClient(VectorDB):
 
         self.connection_string = f"{cb_proto}{host}{params}"
         self.bucket = db_config.get("bucket")
-        self.batch_size = 100  # TODO
-        self.docs_count = 0
-
         self.index_name = f"{self.bucket}_vector_index"
 
         log.debug(f"{db_case_config=}")
@@ -102,28 +89,19 @@ class CouchbaseClient(VectorDB):
         self, embeddings: list[list[float]], metadata: list[int], **kwargs
     ) -> tuple[int, Exception]:
         assert len(embeddings) == len(metadata)
-        self.docs_count += len(embeddings)
-        insert_count = 0
-        try:
-            upsert_options = UpsertMultiOptions(
-                return_exceptions=False, timeout=timedelta(seconds=10)
-            )
-            coll = self._get_cluster().bucket(self.bucket).default_collection()
-            for start_offset in range(0, len(embeddings), self.batch_size):
-                end_offset = start_offset + self.batch_size
-                emb_batch = embeddings[start_offset:end_offset]
-                meta_batch = metadata[start_offset:end_offset]
-                batch_data = {
-                    f"{meta}": {"id": meta, "emb": emb}
-                    for emb, meta in zip(emb_batch, meta_batch, strict=False)
-                }
-                coll.upsert_multi(batch_data, upsert_options)
-                insert_count += self.batch_size
-        except CouchbaseException as e:
-            log.debug(e)
-            return insert_count, e
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
 
-        return insert_count, None
+        bucket = loop.run_until_complete(self._get_bucket_async())
+        return loop.run_until_complete(self.load_all_batches(bucket.default_collection(), embeddings, metadata)), None
+
+    async def load_all_batches(self, coll, embeddings: list[list[float]], metadata: list[int]):
+        await asyncio.gather(*[
+            coll.upsert(f"{metadata[index]}", {"emb": embeddings[index]})
+            for index in range(len(metadata))
+        ])
+        return len(metadata)
 
     def ready_to_load(self):
         pass
@@ -148,6 +126,19 @@ class CouchbaseClient(VectorDB):
             timedelta(seconds=30), WaitUntilReadyOptions(service_types=self.services)
         )
         return cluster
+
+    async def _get_bucket_async(self):
+        """Helper for creating an async cluster connection."""
+        from acouchbase.cluster import Cluster
+        auth = PasswordAuthenticator(self.username, self.password)
+        cluster_options = ClusterOptions(auth)
+        if self.is_capella:
+            cluster_options.apply_profile("wan_development")
+
+        cluster = Cluster(self.connection_string, cluster_options)
+        bucket_ = cluster.bucket(self.bucket)
+        await bucket_.on_connect()
+        return bucket_
 
     def _drop_or_flush_old(self):
         cluster = self._get_cluster()
@@ -242,14 +233,17 @@ class FTSCouchbaseClient(CouchbaseClient):
 
     def wait_for_index(self):
         index_manager = self._get_cluster().search_indexes()
+        current_count = 0
         while True:
             try:
                 indexed_docs = index_manager.get_indexed_documents_count(
                     self.index_name
                 )
-                log.debug(f"Indexed docs {indexed_docs}")
-                if indexed_docs >= self.docs_count:
+                log.debug(f"Index status: {indexed_docs=}")
+                if indexed_docs > 0 and current_count == indexed_docs:
+                    # Consider the index is ready if the indexed docs havent changed since last check
                     break
+                current_count = indexed_docs
             except CouchbaseException as e:
                 log.warn(e.message)
             sleep(10)
