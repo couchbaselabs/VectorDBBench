@@ -1,4 +1,4 @@
-import asyncio
+import concurrent.futures
 import logging
 from contextlib import contextmanager
 from datetime import timedelta
@@ -82,26 +82,35 @@ class CouchbaseClient(VectorDB):
     @contextmanager
     def init(self):
         # Nothing todo here as we cant store or return cluster/collection object due to the way the runners uses the db object.
-        # The serial runner uses multiprocces and these objects cant be pickled.
+        # The runner uses multiprocces and these objects cant be pickled.
         yield {}
 
     def insert_embeddings(
         self, embeddings: list[list[float]], metadata: list[int], **kwargs
     ) -> tuple[int, Exception]:
-        assert len(embeddings) == len(metadata)
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
+        data_len = len(metadata)
+        batch_count = self._get_cpu_count()
+        batch_size = round(data_len / batch_count)
+        batches = [
+            (
+                embeddings[start_offset : start_offset + batch_size],
+                metadata[start_offset : start_offset + batch_size],
+            )
+            for start_offset in range(0, data_len, batch_size)
+        ]
+        log.debug(f"Using {len(batches)} batches of {batch_size=}")
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            executor.map(self.upsert_batch, batches)
 
-        bucket = loop.run_until_complete(self._get_bucket_async())
-        return loop.run_until_complete(self.load_all_batches(bucket.default_collection(), embeddings, metadata)), None
+        return data_len, None
 
-    async def load_all_batches(self, coll, embeddings: list[list[float]], metadata: list[int]):
-        await asyncio.gather(*[
-            coll.upsert(f"{metadata[index]}", {"emb": embeddings[index]})
-            for index in range(len(metadata))
-        ])
-        return len(metadata)
+    def upsert_batch(self, batch: tuple[list[list[float]], list[int]]):
+        coll = self._get_cluster().bucket(self.bucket).default_collection()
+        for emb, id in zip(*batch, strict=False):
+            try:
+                coll.upsert(f"{id}", {"emb": emb})
+            except CouchbaseException as e:
+                logging.root.warn(e.message)
 
     def ready_to_load(self):
         pass
@@ -179,6 +188,14 @@ class CouchbaseClient(VectorDB):
     def wait_for_index(self):
         pass
 
+    def _get_cpu_count(self) -> int:
+        """Get 70% of the current machine CPU."""
+        try:
+            import multiprocessing as mp
+
+            return max(2, int(mp.cpu_count() * 0.7))
+        except Exception:
+            return 2
 
 class FTSCouchbaseClient(CouchbaseClient):
     def __init__(
@@ -234,6 +251,7 @@ class FTSCouchbaseClient(CouchbaseClient):
     def wait_for_index(self):
         index_manager = self._get_cluster().search_indexes()
         current_count = 0
+        limit_hit = 0
         while True:
             try:
                 indexed_docs = index_manager.get_indexed_documents_count(
@@ -241,8 +259,12 @@ class FTSCouchbaseClient(CouchbaseClient):
                 )
                 log.debug(f"Index status: {indexed_docs=}")
                 if indexed_docs > 0 and current_count == indexed_docs:
-                    # Consider the index is ready if the indexed docs havent changed since last check
-                    break
+                    # Consider the index is ready if the indexed docs havent changed since last 2 checks
+                    limit_hit += 1
+                    if limit_hit == 2:
+                        return
+                else:
+                    limit_hit = 0
                 current_count = indexed_docs
             except CouchbaseException as e:
                 log.warn(e.message)
@@ -313,3 +335,5 @@ class GSICouchbaseClient(CouchbaseClient):
             index_manager.drop_index(self.bucket, self.index_name)
         except QueryIndexNotFoundException:
             pass
+        except CouchbaseException as e:
+            log.debug(e)
