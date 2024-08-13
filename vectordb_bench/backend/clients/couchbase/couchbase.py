@@ -76,6 +76,7 @@ class CouchbaseClient(VectorDB):
 
         log.debug(f"{db_case_config=}")
 
+        self.cpu_count = self._get_cpu_count()
         if drop_old:
             self._drop_or_flush_old()
 
@@ -89,8 +90,7 @@ class CouchbaseClient(VectorDB):
         self, embeddings: list[list[float]], metadata: list[int], **kwargs
     ) -> tuple[int, Exception]:
         data_len = len(metadata)
-        batch_count = self._get_cpu_count()
-        batch_size = round(data_len / batch_count)
+        batch_size = round(data_len / self.cpu_count)
         batches = [
             (
                 embeddings[start_offset : start_offset + batch_size],
@@ -316,6 +316,7 @@ class GSICouchbaseClient(CouchbaseClient):
                 if state == "online":
                     break
             sleep(10)
+        sleep(300)  # extra 5min sleep
         log.debug("Index created")
 
     def create_index(self):

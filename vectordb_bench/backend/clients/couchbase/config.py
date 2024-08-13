@@ -102,9 +102,11 @@ class CouchbaseFTSIndexConfig(CouchbaseIndexConfig):
 
 
 class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
-    nprobe: int = 3
-    train_list: int = 10000
     is_gsi_index: bool = True
+    # GSI configuration
+    nprobe: int = 100
+    train_list: int = 10000
+    description: str = "IVF,SQ8"
 
     def parse_metric(self) -> str:
         return self.metric_type.value
@@ -112,7 +114,7 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     def index_param(self, dim: int = 128) -> dict:
         return {
             "dimension": dim,
-            "description": "IVF,SQ8",
+            "description": self.description,
             "similarity": "L2",
         }
 
