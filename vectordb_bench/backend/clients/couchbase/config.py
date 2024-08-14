@@ -104,7 +104,7 @@ class CouchbaseFTSIndexConfig(CouchbaseIndexConfig):
 class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     is_gsi_index: bool = True
     # GSI configuration
-    nprobe: int = 100
+    nprobes: int = 1
     train_list: int = 10000
     description: str = "IVF,SQ8"
 

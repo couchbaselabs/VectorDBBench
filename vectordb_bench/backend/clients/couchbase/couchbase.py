@@ -289,6 +289,7 @@ class GSICouchbaseClient(CouchbaseClient):
     ) -> None:
         self.services = [ServiceType.KeyValue, ServiceType.Query]
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
+        self.nprobes = db_case_config.nprobes
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
@@ -296,9 +297,9 @@ class GSICouchbaseClient(CouchbaseClient):
         rows = [0]
         options = QueryOptions(timeout=timedelta(minutes=5))
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {k}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {self.nprobes}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
-            rows = [int(row.get("id")) for row in query_result]
+            rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
             log.warn(e.message)
             if isinstance(e.error_context, QueryErrorContext):
