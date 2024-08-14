@@ -296,7 +296,7 @@ class GSICouchbaseClient(CouchbaseClient):
         rows = [0]
         options = QueryOptions(timeout=timedelta(minutes=5))
         try:
-            select_query = f"SELECT id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {k}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {k}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id")) for row in query_result]
         except CouchbaseException as e:
