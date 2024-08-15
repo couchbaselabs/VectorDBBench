@@ -29,7 +29,7 @@ class CouchbaseConfig(DBConfig):
 class CouchbaseIndexType(str, Enum):
     FTS = "FTS"
     CVI = "CVI"
-    BHVI = "BHVI"
+    BHVI = "BHIVE"
 
 
 class CouchbaseIndexConfig(BaseModel, DBCaseConfig):
@@ -111,7 +111,7 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     def parse_metric(self) -> str:
         return self.metric_type.value
 
-    def index_param(self, dim: int = 128) -> dict:
+    def index_param(self, dim: int) -> dict:
         return {
             "dimension": dim,
             "description": self.description,
