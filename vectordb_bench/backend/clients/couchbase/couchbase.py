@@ -108,7 +108,7 @@ class CouchbaseClient(VectorDB):
         coll = self._get_cluster().bucket(self.bucket).default_collection()
         for emb, id in zip(*batch, strict=False):
             try:
-                coll.upsert(f"{id}", {"emb": emb})
+                coll.upsert(f"{id}", {"id": id, "emb": emb})
             except CouchbaseException as e:
                 logging.root.warn(e.message)
 
@@ -296,8 +296,9 @@ class GSICouchbaseClient(CouchbaseClient):
     ) -> list[int]:
         rows = [0]
         options = QueryOptions(timeout=timedelta(minutes=5))
+        log.debug(f"{query=}")
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(dim, {query}, 'L2', {self.nprobes}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(emb, {query}, 'L2', {self.nprobes}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
@@ -321,14 +322,15 @@ class GSICouchbaseClient(CouchbaseClient):
         log.debug("Index created")
 
     def create_index(self):
-        index_params = self.db_case_config.index_param(self.dim)
-        create_index_query = f"CREATE INDEX `{self.index_name}` ON `{self.bucket}` (emb VECTOR) USING GSI WITH {index_params}"
+        create_index_query = self._get_create_index_statement()
         log.debug(f"Creating index: {create_index_query}")
         cluster = self._get_cluster()
         try:
-            cluster.query(create_index_query).execute()
+            cluster.query(
+                create_index_query, QueryOptions(timeout=timedelta(seconds=180))
+            ).execute()
         except CouchbaseException as e:
-            # Possibly a timeout, just continue to waiting for the index to be ready
+            # Possibly a timeout, just continue and wait for the index to be ready
             log.debug(e)
 
     def drop_index(self, cluster: Cluster):
@@ -339,3 +341,13 @@ class GSICouchbaseClient(CouchbaseClient):
             pass
         except CouchbaseException as e:
             log.debug(e)
+
+    def _get_create_index_statement(self) -> str:
+        index_params = self.db_case_config.index_param(self.dim)
+        prefix = ""
+        fields = "emb VECTOR, id"
+        if self.index_type == "BHIVE":
+            prefix = "VECTOR"
+            fields = "emb VECTOR"
+
+        return f"CREATE {prefix} INDEX `{self.index_name}` ON `{self.bucket}`({fields}) USING GSI WITH {index_params}"
