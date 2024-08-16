@@ -29,7 +29,7 @@ class CouchbaseConfig(DBConfig):
 class CouchbaseIndexType(str, Enum):
     FTS = "FTS"
     CVI = "CVI"
-    BHVI = "BHIVE"
+    BHIVE = "BHIVE"
 
 
 class CouchbaseIndexConfig(BaseModel, DBCaseConfig):
@@ -103,20 +103,26 @@ class CouchbaseFTSIndexConfig(CouchbaseIndexConfig):
 
 class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     is_gsi_index: bool = True
-    # GSI configuration
-    nprobes: int = 1
-    train_list: int = 10000
+    # GSI index configuration
     description: str = "IVF,SQ8"
+    nprobes: int = 1
+    train_list: int | None = None
+    scan_nprobes: int | None = None
 
     def parse_metric(self) -> str:
         return self.metric_type.value
 
     def index_param(self, dim: int) -> dict:
-        return {
+        params = {
             "dimension": dim,
             "description": self.description,
             "similarity": "L2",
         }
+        if self.train_list:
+            params["train_list"] = self.train_list
+        if self.scan_nprobes:
+            params["scan_nprobes"] = self.scan_nprobes
+        return params
 
 
 class CouchbaseGSIBHIndexConfig(CouchbaseGSICVIndexConfig):
@@ -126,5 +132,5 @@ class CouchbaseGSIBHIndexConfig(CouchbaseGSICVIndexConfig):
 _couchbase_index_config = {
     CouchbaseIndexType.FTS: CouchbaseFTSIndexConfig,
     CouchbaseIndexType.CVI: CouchbaseGSICVIndexConfig,
-    CouchbaseIndexType.BHVI: CouchbaseGSIBHIndexConfig,
+    CouchbaseIndexType.BHIVE: CouchbaseGSIBHIndexConfig,
 }

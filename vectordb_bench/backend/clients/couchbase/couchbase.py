@@ -296,9 +296,10 @@ class GSICouchbaseClient(CouchbaseClient):
     ) -> list[int]:
         rows = [0]
         options = QueryOptions(timeout=timedelta(minutes=5))
-        log.debug(f"{query=}")
+        # Filters are in the form of filters={'metadata': '>=5000', 'id': 5000}
+        where_claus = f"WHERE id {filters.get('metadata')}" if filters else ""
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` ORDER BY ANN(emb, {query}, 'L2', {self.nprobes}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` {where_claus} ORDER BY ANN(emb, {query}, 'L2', {self.nprobes}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
