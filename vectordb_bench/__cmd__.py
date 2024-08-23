@@ -6,7 +6,7 @@ from concurrent.futures import Future  # noqa
 
 from vectordb_bench import config
 from vectordb_bench.backend.cases import CaseType
-from vectordb_bench.backend.clients.api import DBConfig, EmptyDBCaseConfig
+from vectordb_bench.backend.clients.api import DBConfig
 from vectordb_bench.interface import BenchMarkRunner
 from vectordb_bench.models import DB, CaseConfig, TaskConfig
 
@@ -19,15 +19,23 @@ class CMDRun:
         self.db_config: DBConfig = self.db.config_cls(**json.loads(args.db_config))
         self.cases: CaseType = [CaseType[case] for case in args.cases.split(",")]
         self.label = args.label
+        self.db_case_config: dict = json.loads(args.db_case_config)
+        self.index_type = None
+        if self.db == DB.Couchbase:
+            self.index_type = self.db_config.to_dict().get("index_type")
 
     def run_from_cmd(self):
         try:
             task_configs = []
             for case in self.cases:
+                log.debug(f"{self.db_case_config=}")
+
                 task_config = TaskConfig(
                     db=self.db,
                     db_config=self.db_config,
-                    db_case_config=EmptyDBCaseConfig(),
+                    db_case_config=self.db.case_config_cls(self.index_type)(
+                        **self.db_case_config
+                    ),
                     case_config=CaseConfig(case_id=case),
                 )
                 task_configs.append(task_config)
@@ -47,6 +55,12 @@ def get_args():
 
     parser.add_argument(
         "-c", "--db-config", dest="db_config", default="{}", help="Db config"
+    )
+    parser.add_argument(
+        "--db-case-config",
+        dest="db_case_config",
+        default="{}",
+        help="Case config",
     )
     parser.add_argument(
         "-d", "--database", required=True, help="Database name as listed in DB enum"

@@ -153,6 +153,10 @@ class DB(Enum):
             from .pgvecto_rs.config import _pgvecto_rs_case_config
             return _pgvecto_rs_case_config.get(index_type)
 
+        if self == DB.Couchbase:
+            from .couchbase.config import _couchbase_index_config
+            return _couchbase_index_config.get(index_type)
+
         # DB.Pinecone, DB.Chroma, DB.Redis
         return EmptyDBCaseConfig
 
