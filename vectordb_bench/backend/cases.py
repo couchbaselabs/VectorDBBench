@@ -10,6 +10,7 @@ from vectordb_bench.frontend.components.custom.getCustomConfig import (
     CustomDatasetConfig,
 )
 
+from .dataset import Dataset, DatasetManager
 from .dataset import CustomDataset, Dataset, DatasetManager
 
 log = logging.getLogger(__name__)

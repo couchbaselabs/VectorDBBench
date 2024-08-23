@@ -4,6 +4,9 @@ from typing import Type
 from .api import (DBCaseConfig, DBConfig, EmptyDBCaseConfig, IndexType,
                   MetricType, VectorDB)
 
+from .api import (DBCaseConfig, DBConfig, EmptyDBCaseConfig, IndexType,
+                  MetricType, VectorDB)
+
 
 class DB(Enum):
     """Database types
