@@ -1,10 +1,11 @@
 import logging
+import os
 import pathlib
 import typing
-from enum import Enum
-from tqdm import tqdm
-import os
 from abc import ABC, abstractmethod
+from enum import Enum
+
+from tqdm import tqdm
 
 from .. import config
 

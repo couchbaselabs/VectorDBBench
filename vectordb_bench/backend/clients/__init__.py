@@ -1,13 +1,8 @@
 from enum import Enum
 from typing import Type
-from .api import (
-    VectorDB,
-    DBConfig,
-    DBCaseConfig,
-    EmptyDBCaseConfig,
-    IndexType,
-    MetricType,
-)
+
+from .api import (DBCaseConfig, DBConfig, EmptyDBCaseConfig, IndexType,
+                  MetricType, VectorDB)
 
 
 class DB(Enum):
@@ -36,6 +31,7 @@ class DB(Enum):
     Chroma = "Chroma"
     AWSOpenSearch = "OpenSearch"
     Test = "test"
+    Couchbase = "Couchbase"
 
 
     @property
@@ -93,6 +89,10 @@ class DB(Enum):
             from .aws_opensearch.aws_opensearch import AWSOpenSearch
             return AWSOpenSearch
 
+        if self == DB.Couchbase:
+            from .couchbase.couchbase import Couchbase
+            return Couchbase
+
     @property
     def config_cls(self) -> Type[DBConfig]:
         """Import while in use"""
@@ -147,6 +147,10 @@ class DB(Enum):
         if self == DB.AWSOpenSearch:
             from .aws_opensearch.config import AWSOpenSearchConfig
             return AWSOpenSearchConfig
+
+        if self == DB.Couchbase:
+            from .couchbase.config import CouchbaseConfig
+            return CouchbaseConfig
 
     def case_config_cls(self, index_type: IndexType | None = None) -> Type[DBCaseConfig]:
         if self == DB.Milvus:

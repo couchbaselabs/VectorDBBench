@@ -1,5 +1,5 @@
-import typing
 import logging
+import typing
 from enum import Enum, auto
 from typing import Type
 
@@ -11,7 +11,6 @@ from vectordb_bench.frontend.components.custom.getCustomConfig import (
 )
 
 from .dataset import CustomDataset, Dataset, DatasetManager
-
 
 log = logging.getLogger(__name__)
 
