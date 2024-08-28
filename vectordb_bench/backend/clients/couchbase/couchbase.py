@@ -290,6 +290,7 @@ class GSICouchbaseClient(CouchbaseClient):
         self.services = [ServiceType.KeyValue, ServiceType.Query]
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
         self.nprobes = db_case_config.nprobes
+        self.similarity = db_case_config.similarity
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
@@ -297,9 +298,9 @@ class GSICouchbaseClient(CouchbaseClient):
         rows = [0]
         options = QueryOptions(timeout=timedelta(minutes=5))
         # Filters are in the form of filters={'metadata': '>=5000', 'id': 5000}
-        where_claus = f"WHERE id {filters.get('metadata')}" if filters else ""
+        where_clause = f"WHERE id {filters.get('metadata')}" if filters else ""
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` {where_claus} ORDER BY ANN(emb, {query}, 'L2', {self.nprobes}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` {where_clause} ORDER BY ANN(emb, {query}, '{self.similarity}', {self.nprobes}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
@@ -346,9 +347,9 @@ class GSICouchbaseClient(CouchbaseClient):
     def _get_create_index_statement(self) -> str:
         index_params = self.db_case_config.index_param(self.dim)
         prefix = ""
-        fields = "emb VECTOR, id"
+        fields = "emb VECTOR"
         if self.index_type == "BHIVE":
             prefix = "VECTOR"
-            fields = "emb VECTOR"
+        if self.
 
         return f"CREATE {prefix} INDEX `{self.index_name}` ON `{self.bucket}`({fields}) USING GSI WITH {index_params}"
