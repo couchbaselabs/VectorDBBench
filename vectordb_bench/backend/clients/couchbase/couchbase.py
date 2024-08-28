@@ -347,9 +347,9 @@ class GSICouchbaseClient(CouchbaseClient):
     def _get_create_index_statement(self) -> str:
         index_params = self.db_case_config.index_param(self.dim)
         prefix = ""
-        fields = "emb VECTOR"
+        fields = "emb VECTOR, id"
         if self.index_type == "BHIVE":
             prefix = "VECTOR"
-        if self.
+            fields = "emb VECTOR"
 
         return f"CREATE {prefix} INDEX `{self.index_name}` ON `{self.bucket}`({fields}) USING GSI WITH {index_params}"
