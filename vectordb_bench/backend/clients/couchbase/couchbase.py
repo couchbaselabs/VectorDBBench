@@ -290,7 +290,7 @@ class GSICouchbaseClient(CouchbaseClient):
         self.services = [ServiceType.KeyValue, ServiceType.Query]
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
         self.nprobes = db_case_config.nprobes
-        self.similarity = db_case_config.similarity
+        self.vector_similarity = db_case_config.vector_similarity
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
@@ -300,7 +300,7 @@ class GSICouchbaseClient(CouchbaseClient):
         # Filters are in the form of filters={'metadata': '>=5000', 'id': 5000}
         where_clause = f"WHERE id {filters.get('metadata')}" if filters else ""
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` {where_clause} ORDER BY ANN(emb, {query}, '{self.similarity}', {self.nprobes}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` {where_clause} ORDER BY ANN(emb, {query}, '{self.vector_similarity}', {self.nprobes}) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
