@@ -105,9 +105,10 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     is_gsi_index: bool = True
     # GSI index configuration
     description: str = "IVF,SQ8"
-    nprobes: int = 1
+    nprobes: int = 10
     train_list: int | None = None
     scan_nprobes: int | None = None
+    vector_similarity: str = "L2"
 
     def parse_metric(self) -> str:
         return self.metric_type.value
@@ -116,7 +117,7 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
         params = {
             "dimension": dim,
             "description": self.description,
-            "similarity": "L2",
+            "similarity": self.vector_similarity,
         }
         if self.train_list:
             params["train_list"] = self.train_list
