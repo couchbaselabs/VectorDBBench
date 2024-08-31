@@ -213,7 +213,7 @@ class FTSCouchbaseClient(CouchbaseClient):
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
 
     def search_embedding(
-        self, query: list[float], k: int = 100, filters: dict | None = None
+        self, query: list[float], k: int = 10, filters: dict | None = None
     ) -> list[int]:
         rows = [0]
         try:

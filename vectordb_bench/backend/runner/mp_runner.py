@@ -24,7 +24,7 @@ class MultiProcessingSearchRunner:
         self,
         db: api.VectorDB,
         test_data: list[list[float]],
-        k: int = 100,
+        k: int = 10,
         filters: dict | None = None,
         concurrencies: Iterable[int] = config.NUM_CONCURRENCY,
         duration: int = 30,
