@@ -90,6 +90,8 @@ class CouchbaseClient(VectorDB):
         self, embeddings: list[list[float]], metadata: list[int], **kwargs
     ) -> tuple[int, Exception]:
         data_len = len(metadata)
+        if getattr(self, 'skip_dataload', False):
+            return data_len, None
         batch_size = round(data_len / self.cpu_count)
         batches = [
             (
@@ -291,6 +293,7 @@ class GSICouchbaseClient(CouchbaseClient):
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
         self.nprobes = db_case_config.nprobes
         self.vector_similarity = db_case_config.vector_similarity
+        self.skip_dataload =db_case_config.skip_dataload
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
