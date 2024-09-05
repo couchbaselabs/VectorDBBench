@@ -109,7 +109,7 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     train_list: int | None = None
     scan_nprobes: int | None = None
     vector_similarity: str = "L2"
-    skip_dataload: bool = False
+    skip_dataload: str = None
 
     def parse_metric(self) -> str:
         return self.metric_type.value
