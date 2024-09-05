@@ -293,7 +293,9 @@ class GSICouchbaseClient(CouchbaseClient):
         super().__init__(dim, db_config, db_case_config, drop_old, **kwargs)
         self.nprobes = db_case_config.nprobes
         self.vector_similarity = db_case_config.vector_similarity
-        self.skip_dataload =db_case_config.skip_dataload
+        self.skip_dataload = db_case_config.skip_dataload
+        if self.skip_dataload in ("False", "false"):
+            self.skip_dataload = False
 
     def search_embedding(
         self, query: list[float], k: int = 100, filters: dict | None = None
