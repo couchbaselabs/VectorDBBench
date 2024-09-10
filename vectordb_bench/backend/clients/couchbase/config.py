@@ -109,6 +109,7 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
     train_list: int | None = None
     scan_nprobes: int | None = None
     vector_similarity: str = "L2"
+    num_partitions: int | None = None
 
     def parse_metric(self) -> str:
         return self.metric_type.value
@@ -123,6 +124,8 @@ class CouchbaseGSICVIndexConfig(CouchbaseIndexConfig):
             params["train_list"] = self.train_list
         if self.scan_nprobes:
             params["scan_nprobes"] = self.scan_nprobes
+        if self.num_partitions:
+            params["num_partitions"] = self.num_partitions
         return params
 
 
