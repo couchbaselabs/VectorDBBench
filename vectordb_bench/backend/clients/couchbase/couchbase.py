@@ -325,6 +325,7 @@ class GSICouchbaseClient(CouchbaseClient):
 
     def create_index(self):
         create_index_query = self._get_create_index_statement()
+        log.info(create_index_query)
         log.debug(f"Creating index: {create_index_query}")
         cluster = self._get_cluster()
         try:
@@ -346,10 +347,13 @@ class GSICouchbaseClient(CouchbaseClient):
 
     def _get_create_index_statement(self) -> str:
         index_params = self.db_case_config.index_param(self.dim)
+        use_partitions = ""
+        if "num_partition" in index_params.keys():
+            use_partitions = "PARTITION BY HASH(id) "
         prefix = ""
         fields = "emb VECTOR, id"
         if self.index_type == "BHIVE":
             prefix = "VECTOR"
             fields = "emb VECTOR"
 
-        return f"CREATE {prefix} INDEX `{self.index_name}` ON `{self.bucket}`({fields}) USING GSI WITH {index_params}"
+        return f"CREATE {prefix} INDEX `{self.index_name}` ON `{self.bucket}`({fields}) {use_partitions}USING GSI WITH {index_params}"
