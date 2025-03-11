@@ -71,7 +71,7 @@ pgvector = [ "pgvector", "psycopg" ]
 pgvecto_rs = [ "psycopg2" ]
 redis = [ "redis" ]
 chromadb = [ "chromadb" ]
-couchbase = [ "couchbase" ]
+couchbase = [ "couchbase @ git+https://github.com/couchbase/couchbase-python-client.git@8b5c98eb8beb9459baa0454925787d9161f72bd9" ]
 
 [project.urls]
 "repository" = "https://github.com/zilliztech/VectorDBBench"

@@ -9,7 +9,7 @@ all:
 	pyenv local ${PY_VERSION} && \
 	virtualenv --quiet --python python3.11 ${ENV}
 	# ${ENV}/bin/pip install ./vectordb-bench[couchbase]
-	${ENV}/bin/pip install --quiet -e ".[couchbase]"
+	PYCBC_USE_CPM_CACHE=OFF ${ENV}/bin/pip install --quiet -e ".[couchbase]" --no-cache-dir
 
 clean:
 	rm -rf ${ENV} vectordb_bench.egg-info
