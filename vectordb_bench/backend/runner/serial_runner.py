@@ -154,7 +154,7 @@ class SerialSearchRunner:
         db: api.VectorDB,
         test_data: list[list[float]],
         ground_truth: pd.DataFrame,
-        k: int = 100,
+        k: int = 10,
         filters: dict | None = None,
     ):
         self.db = db
