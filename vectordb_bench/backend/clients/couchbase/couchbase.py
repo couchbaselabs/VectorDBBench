@@ -325,7 +325,6 @@ class GSICouchbaseClient(CouchbaseClient):
 
     def create_index(self):
         create_index_query = self._get_create_index_statement()
-        log.info(create_index_query)
         log.debug(f"Creating index: {create_index_query}")
         cluster = self._get_cluster()
         try:
