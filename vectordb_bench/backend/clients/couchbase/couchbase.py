@@ -300,7 +300,7 @@ class GSICouchbaseClient(CouchbaseClient):
         # Filters are in the form of filters={'metadata': '>=5000', 'id': 5000}
         where_clause = f"WHERE id {filters.get('metadata')}" if filters else ""
         try:
-            select_query = f"SELECT meta().id from `{self.bucket}` {where_clause} ORDER BY ANN(emb, {query}, '{self.vector_similarity}', {self.nprobes}) LIMIT {k};"
+            select_query = f"SELECT meta().id from `{self.bucket}` {where_clause} ORDER BY ANN_DISTANCE(emb, {query}, '{self.vector_similarity}', {self.nprobes}, true) LIMIT {k};"
             query_result = self._get_cluster().query(select_query, options).execute()
             rows = [int(row.get("id", 0)) for row in query_result]
         except CouchbaseException as e:
